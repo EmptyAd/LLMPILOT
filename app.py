@@ -15,13 +15,15 @@ def init_connection():
 
 supabase = init_connection()
 
-# Connect to Google Sheet
 def connect_to_gsheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    import json
+    creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key("1Ec4WTZmAqR0r9kWWVmsf-UCSvy4RlIwvdSFBLUbpt8Y").worksheet("Feedback")
     return sheet
+
 
 sheet = connect_to_gsheet()
 
