@@ -18,7 +18,7 @@ supabase = init_connection()
 
 def connect_to_gsheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    creds_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key("1Ec4WTZmAqR0r9kWWVmsf-UCSvy4RlIwvdSFBLUbpt8Y").worksheet("Feedback")
