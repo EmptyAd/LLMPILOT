@@ -1,0 +1,5 @@
+streamlit
+openai
+supabase
+gspread
+oauth2client
