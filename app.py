@@ -1,11 +1,8 @@
 import streamlit as st
 from openai import OpenAI
 from supabase import create_client
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
 
-client = OpenAI(api_key="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")
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 model_id = "ft:gpt-4.1-mini-2025-04-14:pharmaai:test12:Biz0gbXo"
 
 @st.cache_resource
@@ -16,25 +13,18 @@ def init_connection():
 
 supabase = init_connection()
 
-def connect_to_gsheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Load Google service account credentials from secrets
-    gcreds = dict(st.secrets["connections"]["gsheet"])
-    
-    # Use the credentials to authenticate
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(gcreds, scope)
-    client = gspread.authorize(creds)
-    
-    # Open the target sheet
-    sheet = client.open_by_key("1Ec4WTZmAqR0r9kWWVmsf-UCSvy4RlIwvdSFBLUbpt8Y").worksheet("Feedback")
-    return sheet
-
-# Example usage
-sheet = connect_to_gsheet()
-
 def validate_sql(sql):
     return sql.strip().upper().startswith("SELECT")
+
+def log_feedback(original_question, clarified_question, interpretation, generated_sql, output_correct, feedback):
+    supabase.table("feedback").insert({
+        "original_question": original_question,
+        "clarified_question": clarified_question,
+        "ai_interpretation": interpretation,
+        "generated_sql": generated_sql,
+        "output_correct": output_correct,
+        "feedback": feedback
+    }).execute()
 
 schema_prompt = """You are a PostgreSQL expert helping to translate natural language questions into SQL queries.
 You are working with a table named `patient_regimen_data` that contains the following columns and example values:
@@ -65,26 +55,13 @@ End date of current regimen, e.g. '2022-05-10'
 
 Only generate safe SELECT queries using these fields. Do not write INSERT, UPDATE, DELETE, or DROP statements."""
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "phase" not in st.session_state:
-    st.session_state.phase = "waiting"
-if "original_query" not in st.session_state:
-    st.session_state.original_query = ""
-if "clarified_query" not in st.session_state:
-    st.session_state.clarified_query = ""
-if "last_sql" not in st.session_state:
-    st.session_state.last_sql = ""
-if "last_interpretation" not in st.session_state:
-    st.session_state.last_interpretation = ""
-if "followup_question" not in st.session_state:
-    st.session_state.followup_question = ""
-if "feedback_given" not in st.session_state:
-    st.session_state.feedback_given = False
-if "additional_feedback" not in st.session_state:
-    st.session_state.additional_feedback = ""
-
 st.title("LLM PILOT")
+
+for key in ["messages", "phase", "original_query", "clarified_query", "last_sql", "last_interpretation", "feedback_given", "additional_feedback"]:
+    if key not in st.session_state:
+        st.session_state[key] = "" if "query" in key or "interpretation" in key else []
+
+st.session_state.phase = st.session_state.phase or "waiting"
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -138,28 +115,16 @@ if user_input:
                                 st.dataframe(result.data)
                             else:
                                 st.info("Query ran but returned no rows.")
-                        except Exception as e:
+                        except Exception:
                             st.error("Query execution failed.")
-                            sheet.append_row([
-                                st.session_state.original_query,
-                                st.session_state.clarified_query,
-                                st.session_state.last_interpretation,
-                                sql,
-                                "Execution Error",
-                                ""  # Additional feedback column
-                            ])
+                            log_feedback(st.session_state.original_query, st.session_state.clarified_query,
+                                         st.session_state.last_interpretation, sql, "Execution Error", "")
                             st.session_state.phase = "waiting"
                             st.stop()
                     else:
                         st.error("Only SELECT queries are allowed.")
-                        sheet.append_row([
-                            st.session_state.original_query,
-                            st.session_state.clarified_query,
-                            st.session_state.last_interpretation,
-                            sql,
-                            "Non-SELECT query blocked",
-                            ""  # Additional feedback column
-                        ])
+                        log_feedback(st.session_state.original_query, st.session_state.clarified_query,
+                                     st.session_state.last_interpretation, sql, "Non-SELECT", "")
                         st.session_state.phase = "waiting"
                         st.stop()
 
@@ -172,10 +137,6 @@ if user_input:
             with st.chat_message("assistant"):
                 st.markdown("Please clarify what you meant.")
             st.session_state.phase = "clarify_intent"
-
-        else:
-            with st.chat_message("assistant"):
-                st.markdown("Please reply with **Yes** or **No**.")
 
     elif st.session_state.phase == "clarify_intent":
         st.session_state.clarified_query = user_input
@@ -197,69 +158,32 @@ if user_input:
     elif st.session_state.phase == "confirm_result":
         if user_input.lower() == "yes":
             with st.chat_message("assistant"):
-                st.markdown("Would you like to provide any additional feedback about this query or result? (Yes/No)")
-            st.session_state.messages.append({"role": "assistant", "content": "Would you like to provide any additional feedback about this query or result? (Yes/No)"})
+                st.markdown("Would you like to provide any additional feedback? (Yes/No)")
             st.session_state.phase = "ask_additional_feedback"
 
         elif user_input.lower() == "no":
-            # Record the rejection
-            sheet.append_row([
-                st.session_state.original_query,
-                st.session_state.clarified_query,
-                st.session_state.last_interpretation,
-                st.session_state.last_sql,
-                "No",
-                ""  # No additional feedback
-            ])
-            
+            log_feedback(st.session_state.original_query, st.session_state.clarified_query,
+                         st.session_state.last_interpretation, st.session_state.last_sql, "No", "")
             with st.chat_message("assistant"):
                 st.markdown("Okay, please clarify your question again.")
             st.session_state.phase = "clarify_intent"
 
-        else:
-            with st.chat_message("assistant"):
-                st.markdown("Please reply with Yes or No.")
-
     elif st.session_state.phase == "ask_additional_feedback":
         if user_input.lower() == "yes":
             with st.chat_message("assistant"):
-                st.markdown("Please type your additional feedback about the query or results.")
-            st.session_state.messages.append({"role": "assistant", "content": "Please type your additional feedback about the query or results."})
+                st.markdown("Please type your additional feedback.")
             st.session_state.phase = "collect_additional_feedback"
         elif user_input.lower() == "no":
-            # Update the previous row with empty feedback
-            sheet.append_row([
-                st.session_state.original_query,
-                st.session_state.clarified_query,
-                st.session_state.last_interpretation,
-                st.session_state.last_sql,
-                "Yes",
-                "No additional feedback"
-            ])
-            
+            log_feedback(st.session_state.original_query, st.session_state.clarified_query,
+                         st.session_state.last_interpretation, st.session_state.last_sql, "Yes", "No additional feedback")
             with st.chat_message("assistant"):
-                st.markdown("Thank you! Ask your next question whenever you're ready.")
-            st.session_state.messages.append({"role": "assistant", "content": "Thank you! Ask your next question whenever you're ready."})
+                st.markdown("Thank you! Ask your next question anytime.")
             st.session_state.phase = "waiting"
-        else:
-            with st.chat_message("assistant"):
-                st.markdown("Please reply with Yes or No.")
 
     elif st.session_state.phase == "collect_additional_feedback":
-        st.session_state.additional_feedback = user_input
-        # Update the previous row with the feedback
-        sheet.append_row([
-            st.session_state.original_query,
-            st.session_state.clarified_query,
-            st.session_state.last_interpretation,
-            st.session_state.last_sql,
-            "Yes",
-            user_input
-        ])
-        
+        feedback = user_input
+        log_feedback(st.session_state.original_query, st.session_state.clarified_query,
+                     st.session_state.last_interpretation, st.session_state.last_sql, "Yes", feedback)
         with st.chat_message("assistant"):
-            st.markdown("Thank you for your feedback!")
-        st.session_state.messages.append({"role": "assistant", "content": "Thank you for your feedback!"})
-        with st.chat_message("assistant"):
-            st.markdown("Ask your next question whenever you're ready.")
+            st.markdown("Thanks for your feedback! You can ask another question.")
         st.session_state.phase = "waiting"
