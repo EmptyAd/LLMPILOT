@@ -3,6 +3,7 @@ from openai import OpenAI
 from supabase import create_client
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import json
 
 client = OpenAI(api_key="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")
 model_id = "ft:gpt-4.1-mini-2025-04-14:pharmaai:test12:Biz0gbXo"
@@ -17,13 +18,11 @@ supabase = init_connection()
 
 def connect_to_gsheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    import json
     creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key("1Ec4WTZmAqR0r9kWWVmsf-UCSvy4RlIwvdSFBLUbpt8Y").worksheet("Feedback")
     return sheet
-
 
 sheet = connect_to_gsheet()
 
