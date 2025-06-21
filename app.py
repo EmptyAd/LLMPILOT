@@ -18,12 +18,19 @@ supabase = init_connection()
 
 def connect_to_gsheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
+    # Load Google service account credentials from secrets
+    gcreds = dict(st.secrets["connections"]["gsheet"])
+    
+    # Use the credentials to authenticate
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(gcreds, scope)
     client = gspread.authorize(creds)
+    
+    # Open the target sheet
     sheet = client.open_by_key("1Ec4WTZmAqR0r9kWWVmsf-UCSvy4RlIwvdSFBLUbpt8Y").worksheet("Feedback")
     return sheet
 
+# Example usage
 sheet = connect_to_gsheet()
 
 def validate_sql(sql):
