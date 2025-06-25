@@ -3,7 +3,9 @@ from openai import OpenAI
 from supabase import create_client
 
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-model_id = "ft:gpt-4.1-mini-2025-04-14:pharmaai:test12:Biz0gbXo"
+model_id = "ft:gpt-4.1-2025-04-14:pharmaai:nooff3:BlWeYgop"
+model_interpretation = "gpt-4o-2024-08-06"
+
 
 @st.cache_resource
 def init_connection():
@@ -53,6 +55,17 @@ End date of current regimen, e.g. '2022-05-10'
 - Next_Regimen_End (TEXT): Date when the next regimen ended, e.g. '2023-06-01'
 - Next_Regimen_Length (INTEGER): Duration in days of the patient's next (immediately after the current regimen) treatment regimen, e.g. 160
 
+Note:
+Data Model:
+- Each row represents a regimen for a patient.
+- Each drug in a regimen is stored as a comma-separated string in the Client_regimen_group, Previous_Regimen, and Next_Regimen fields.
+
+Temporal Logic
+
+- Add-On Definition: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Client_regimen_group, and the Client_regimen_group drugs are still present in the next regimen.
+- Switch Definition: A switch is when the drugs in Client_regimen_group are replaced by entirely different drugs in Next_Regimen.
+
+The data you will query is based on patient-level transactions transformed into regimen-level data. A regimen represents the set of drugs a patient is on at a particular point in time. Your SQL should reflect precise temporal and treatment logic as described below.
 Only generate safe SELECT queries using these fields. Do not write INSERT, UPDATE, DELETE, or DROP statements."""
 
 st.title("LLM PILOT")
@@ -76,14 +89,27 @@ if user_input:
 
     if st.session_state.phase == "waiting":
         st.session_state.original_query = user_input
+        st.session_state.clarified_query = ""
+        st.session_state.last_sql = ""
         st.session_state.feedback_given = False
         st.session_state.additional_feedback = ""
         with st.chat_message("assistant"):
             with st.spinner("Let me try to understand your question..."):
                 interpretation = client.chat.completions.create(
-                    model="gpt-4o-mini-2024-07-18",
+                    model=model_interpretation,
                     messages=[
-                        {"role": "system", "content": "You're a helpful assistant. Summarize what the user wants to know."},
+                        {"role": "system", "content": """You're a helpful assistant and you need to summarize what the user wants to know, 
+                                                        such that when another AI recieves the output of your understanding, it could generate a psql query to extract the data.
+                                                        Dont go overboard and get into the details of the drugs and how or why is it used, stick to just the understanding of the question.
+                                                        Note: 
+                                                        - Regimen: A combination of drugs a patient is on during a specific treatment period.
+                                                        - Add-On: When a drug is added to an existing regimen. For example, if a patient is on Drug A and later starts Drug B while continuing Drug A, this is called an add-on. The new regimen becomes A + B, and Drug B is the add-on.
+                                                        - Switch: When a patient discontinues one drug and starts another — e.g., moving from Drug A to Drug B with no overlap.
+                                                        - SOB (Source of Business): Refers to the previous drug(s) or regimen(s) a patient was on before transitioning to a new one.
+                                                        - LOT (Line of Therapy or Length of Therapy):
+                                                          - Line of Therapy: Indicates the sequence in which treatments were administered (e.g., 1st-line, 2nd-line).
+                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as end_date_of_therapy - start_date_of_therapy.
+                                                        """},
                         {"role": "user", "content": user_input}
                     ]
                 ).choices[0].message.content.strip()
@@ -98,13 +124,19 @@ if user_input:
             query = st.session_state.clarified_query or st.session_state.original_query
             with st.chat_message("assistant"):
                 with st.spinner("Generating SQL..."):
+                    sql_prompt = f"""The user asked: "{query}".
+                                    The AI understood it as: "{st.session_state.last_interpretation}"
+                                    The previous SQL attempt (if any): {st.session_state.last_sql or '[None]'}
+                                    Based on this, generate a correct SELECT query."""
+
                     sql = client.chat.completions.create(
                         model=model_id,
                         messages=[
                             {"role": "system", "content": schema_prompt},
-                            {"role": "user", "content": query}
+                            {"role": "user", "content": sql_prompt}
                         ]
                     ).choices[0].message.content.strip().rstrip(";")
+
                     st.session_state.last_sql = sql
 
                     if validate_sql(sql):
@@ -128,7 +160,7 @@ if user_input:
                         st.session_state.phase = "waiting"
                         st.stop()
 
-                followup = "Is this output correct? (Yes / No)"
+                followup = "Is this output correct? Yes / No"
                 st.markdown(followup)
             st.session_state.messages.append({"role": "assistant", "content": f"Here is the SQL result.\n\n{followup}"})
             st.session_state.phase = "confirm_result"
@@ -142,13 +174,32 @@ if user_input:
         st.session_state.clarified_query = user_input
         with st.chat_message("assistant"):
             with st.spinner("Let me try to understand your clarification..."):
+                clarification_prompt = f"""The original question was:
+                                        {st.session_state.original_query}
+                                        The AI understood the original question as:
+                                        {st.session_state.last_interpretation}
+                                         The user clarified it as:
+                                        {user_input}
+                                        Please summarize what the user actually wants now."""
                 interpretation = client.chat.completions.create(
-                    model="gpt-4o-mini-2024-07-18",
+                    model=model_interpretation,
                     messages=[
-                        {"role": "system", "content": "You're a helpful assistant. Summarize what the user wants to know."},
-                        {"role": "user", "content": user_input}
+                        {"role": "system", "content": """You're a helpful assistant and you need to summarize what the user wants to know, 
+                                                        such that when another AI recieves the output of your understanding, it could generate a psql query to extract the data.
+                                                        Dont go overboard and get into the details of the drugs and how or why is it used, stick to just the understanding of the question.
+                                                        Note: 
+                                                        - Regimen: A combination of drugs a patient is on during a specific treatment period.
+                                                        - Add-On: When a drug is added to an existing regimen. For example, if a patient is on Drug A and later starts Drug B while continuing Drug A, this is called an add-on. The new regimen becomes A + B, and Drug B is the add-on.
+                                                        - Switch: When a patient discontinues one drug and starts another — e.g., moving from Drug A to Drug B with no overlap.
+                                                        - SOB (Source of Business): Refers to the previous drug(s) or regimen(s) a patient was on before transitioning to a new one.
+                                                        - LOT (Line of Therapy or Length of Therapy):
+                                                          - Line of Therapy: Indicates the sequence in which treatments were administered (e.g., 1st-line, 2nd-line).
+                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as end_date_of_therapy - start_date_of_therapy.
+                                                        """},
+                        {"role": "user", "content": clarification_prompt}
                     ]
                 ).choices[0].message.content.strip()
+
             st.session_state.last_interpretation = interpretation
             msg = f"Got it. I understood your clarification as:\n\n**{interpretation}**\n\nShould I generate SQL for this? Yes / No"
             st.markdown(msg)
@@ -158,7 +209,7 @@ if user_input:
     elif st.session_state.phase == "confirm_result":
         if user_input.lower() == "yes":
             with st.chat_message("assistant"):
-                st.markdown("Would you like to provide any additional feedback? (Yes/No)")
+                st.markdown("Would you like to provide any additional feedback? Yes/No")
             st.session_state.phase = "ask_additional_feedback"
 
         elif user_input.lower() == "no":
