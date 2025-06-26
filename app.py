@@ -56,6 +56,7 @@ End date of current regimen, e.g. '2022-05-10'
 - Next_Regimen_Length (INTEGER): Duration in days of the patient's next (immediately after the current regimen) treatment regimen, e.g. 160
 
 Note:
+-All the names of drug or the medicines are written in all capital e.g. DOXIL, VELCADE, DARZALEX, etc.
 Data Model:
 - Each row represents a regimen for a patient.
 - Each drug in a regimen is stored as a comma-separated string in the Current_Regimen, Previous_Regimen, and Next_Regimen fields.
@@ -101,6 +102,7 @@ if user_input:
                                                         such that when another AI recieves the output of your understanding, it could generate a psql query to extract the data.
                                                         Dont go overboard and get into the details of the drugs and how or why is it used, stick to just the understanding of the question.
                                                         Note: 
+                                                        - All the names of drug or the medicines are written in all capital e.g. DOXIL, VELCADE, DARZALEX, etc.
                                                         - Regimen: A combination of drugs a patient is on during a specific treatment period.
                                                         - Add-On: When a drug is added to an existing regimen. For example, if a patient is on Drug A and later starts Drug B while continuing Drug A, this is called an add-on. The new regimen becomes A + B, and Drug B is the add-on.
                                                         - Switch: When a patient discontinues one drug and starts another — e.g., moving from Drug A to Drug B with no overlap.
@@ -191,6 +193,7 @@ if user_input:
                                                         such that when another AI recieves the output of your understanding, it could generate a psql query to extract the data.
                                                         Dont go overboard and get into the details of the drugs and how or why is it used, stick to just the understanding of the question.
                                                         Note: 
+                                                        - All the names of drug or the medicines are written in all capital e.g. DOXIL, VELCADE, DARZALEX, etc.
                                                         - Regimen: A combination of drugs a patient is on during a specific treatment period.
                                                         - Add-On: When a drug is added to an existing regimen. For example, if a patient is on Drug A and later starts Drug B while continuing Drug A, this is called an add-on. The new regimen becomes A + B, and Drug B is the add-on.
                                                         - Switch: When a patient discontinues one drug and starts another — e.g., moving from Drug A to Drug B with no overlap.
