@@ -3,7 +3,7 @@ from openai import OpenAI
 from supabase import create_client
 
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-model_id = "ft:gpt-4.1-2025-04-14:pharmaai:nooff3:BlWeYgop"
+model_id = "ft:gpt-4.1-2025-04-14:pharmaai:26june3:BmcUSw4q"
 model_interpretation = "gpt-4o-2024-08-06"
 
 
@@ -31,20 +31,20 @@ def log_feedback(original_question, clarified_question, interpretation, generate
 schema_prompt = """You are a PostgreSQL expert helping to translate natural language questions into SQL queries.
 You are working with a table named `patient_regimen_data` that contains the following columns and example values:
 
-- vendor_patient_id (TEXT): Unique identifier for a patient, e.g. '34087654717'
+- patient_id (TEXT): Unique identifier for a patient, e.g. '34087654717'
 - patient_age (INTEGER): Age of the patient, e.g. 73
 - patient_gender (TEXT): Gender of the patient, e.g. 'M' or 'F'
 - patient_state (TEXT): U.S. state code where the patient lives, e.g. 'CA'
-- patient_status (TEXT): 'NEW' = indicates the patient is starting treatment for the condition for the first time, 'CONTINUE' = means the patient was already undergoing treatment for the condition before the current regimen began.
+- patient_status (TEXstart_date_of_therapyT): 'NEW' = indicates the patient is starting treatment for the condition for the first time, 'CONTINUE' = means the patient was already undergoing treatment for the condition before the current regimen began.
 - is_active_flag (TEXT): Denotes if the patient is undergoing treatment as on the date of extraction of data. 'Y' = Active 'N' = Not Active
 - line_of_therapy (TEXT): First-line therapy is the initial or primary treatment given.
 Second-line (and beyond) refers to treatments given after the previous one has failed, stopped, or is no longer effective.
 It helps track how many prior treatments the patient has received for the same condition.
 Treatment sequence, e.g. '1', '4M', '5+' where M = maintenance
-- start_date_of_therapy (TEXT): Start date of current regimen, e.g. '2022-01-15'
-- end_date_of_therapy (TEXT): marks the date when the current treatment regimen was completed, discontinued, or altered in a way that ends the current line of therapy—such as stopping or adding one or more drugs from the regimen.
+- Current_Regimen_Start (TEXT): Start date of current regimen, e.g. '2022-01-15'
+- Current_Regimen_End (TEXT): marks the date when the current treatment regimen was completed, discontinued, or altered in a way that ends the current line of therapy—such as stopping or adding one or more drugs from the regimen.
 End date of current regimen, e.g. '2022-05-10'
-- Client_regimen_group (TEXT): refers to the list or combination of drugs the patient is currently receiving as part of their ongoing treatment regimen. It represents the active set of medications in the current line of therapy., e.g. 'VELCADE + D'
+- Current_Regimen (TEXT): refers to the list or combination of drugs the patient is currently receiving as part of their ongoing treatment regimen. It represents the active set of medications in the current line of therapy., e.g. 'VELCADE + D'
 - Current_Regimen_Length (INTEGER): Duration of current regimen in days, e.g. 120
 - Previous_Regimen (TEXT): Refers to the list or combination of drugs the patient was on immediately before the current regimen, e.g. 'REVLIMID + DP'
 - Previous_Regimen_Start (TEXT): Refers to the date when the previous treatment regimen was initiated for the patient , e.g. '2021-08-01'
@@ -58,12 +58,11 @@ End date of current regimen, e.g. '2022-05-10'
 Note:
 Data Model:
 - Each row represents a regimen for a patient.
-- Each drug in a regimen is stored as a comma-separated string in the Client_regimen_group, Previous_Regimen, and Next_Regimen fields.
+- Each drug in a regimen is stored as a comma-separated string in the Current_Regimen, Previous_Regimen, and Next_Regimen fields.
 
 Temporal Logic
-
-- Add-On Definition: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Client_regimen_group, and the Client_regimen_group drugs are still present in the next regimen.
-- Switch Definition: A switch is when the drugs in Client_regimen_group are replaced by entirely different drugs in Next_Regimen.
+- Add-On Definition: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Current_Regimen, and the Current_Regimen drugs are still present in the next regimen.
+- Switch Definition: A switch is when the drugs in Current_Regimen are replaced by entirely different drugs in Next_Regimen.
 
 The data you will query is based on patient-level transactions transformed into regimen-level data. A regimen represents the set of drugs a patient is on at a particular point in time. Your SQL should reflect precise temporal and treatment logic as described below.
 Only generate safe SELECT queries using these fields. Do not write INSERT, UPDATE, DELETE, or DROP statements."""
@@ -108,7 +107,7 @@ if user_input:
                                                         - SOB (Source of Business): Refers to the previous drug(s) or regimen(s) a patient was on before transitioning to a new one.
                                                         - LOT (Line of Therapy or Length of Therapy):
                                                           - Line of Therapy: Indicates the sequence in which treatments were administered (e.g., 1st-line, 2nd-line).
-                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as end_date_of_therapy - start_date_of_therapy.
+                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as Current_Regimen_End - Current_Regimen_Start.
                                                         """},
                         {"role": "user", "content": user_input}
                     ]
@@ -142,21 +141,21 @@ if user_input:
                     if validate_sql(sql):
                         try:
                             result = supabase.rpc("run_raw_query", {"query": sql}).execute()
+                            st.code(sql, language="sql")
                             if result.data:
-                                st.code(sql, language="sql")
                                 st.dataframe(result.data)
                             else:
                                 st.info("Query ran but returned no rows.")
-                        except Exception:
-                            st.error("Query execution failed.")
+                        except Exception as e:
+                            st.error(f"Query execution failed: {str(e)}")
                             log_feedback(st.session_state.original_query, st.session_state.clarified_query,
-                                         st.session_state.last_interpretation, sql, "Execution Error", "")
+                                       st.session_state.last_interpretation, sql, "Execution Error", str(e))
                             st.session_state.phase = "waiting"
                             st.stop()
                     else:
                         st.error("Only SELECT queries are allowed.")
                         log_feedback(st.session_state.original_query, st.session_state.clarified_query,
-                                     st.session_state.last_interpretation, sql, "Non-SELECT", "")
+                                   st.session_state.last_interpretation, sql, "Non-SELECT", "")
                         st.session_state.phase = "waiting"
                         st.stop()
 
@@ -169,6 +168,10 @@ if user_input:
             with st.chat_message("assistant"):
                 st.markdown("Please clarify what you meant.")
             st.session_state.phase = "clarify_intent"
+        else:
+            with st.chat_message("assistant"):
+                st.markdown("Please answer with just yes or no.")
+            st.session_state.messages.append({"role": "assistant", "content": "Please answer with just yes or no."})
 
     elif st.session_state.phase == "clarify_intent":
         st.session_state.clarified_query = user_input
@@ -194,7 +197,7 @@ if user_input:
                                                         - SOB (Source of Business): Refers to the previous drug(s) or regimen(s) a patient was on before transitioning to a new one.
                                                         - LOT (Line of Therapy or Length of Therapy):
                                                           - Line of Therapy: Indicates the sequence in which treatments were administered (e.g., 1st-line, 2nd-line).
-                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as end_date_of_therapy - start_date_of_therapy.
+                                                          - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as Current_Regimen_End - Current_Regimen_Start.
                                                         """},
                         {"role": "user", "content": clarification_prompt}
                     ]
@@ -218,6 +221,10 @@ if user_input:
             with st.chat_message("assistant"):
                 st.markdown("Okay, please clarify your question again.")
             st.session_state.phase = "clarify_intent"
+        else:
+            with st.chat_message("assistant"):
+                st.markdown("Please answer with just yes or no.")
+            st.session_state.messages.append({"role": "assistant", "content": "Please answer with just yes or no."})
 
     elif st.session_state.phase == "ask_additional_feedback":
         if user_input.lower() == "yes":
@@ -230,6 +237,10 @@ if user_input:
             with st.chat_message("assistant"):
                 st.markdown("Thank you! Ask your next question anytime.")
             st.session_state.phase = "waiting"
+        else:
+            with st.chat_message("assistant"):
+                st.markdown("Please answer with just yes or no.")
+            st.session_state.messages.append({"role": "assistant", "content": "Please answer with just yes or no."})
 
     elif st.session_state.phase == "collect_additional_feedback":
         feedback = user_input
