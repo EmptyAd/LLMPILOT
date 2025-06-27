@@ -33,7 +33,7 @@ def is_data_related(query):
         messages=[
             {
                 "role": "system",
-                "content": "You are a triage bot that decides if a user query is related to SQL or patient regimen data (e.g., drugs, regimens, lines of therapy). Respond only with 'Yes' or 'No'."
+                "content": "You are a triage bot that decides if a user query is related to SQL or patient regimen data (e.g., patients, drugs, regimens, lines of therapy). Respond only with 'Yes' or 'No'."
             },
             {
                 "role": "user",
