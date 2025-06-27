@@ -27,6 +27,22 @@ def log_feedback(original_question, clarified_question, interpretation, generate
         "feedback": feedback
     }).execute()
 
+def is_data_related(query):
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a triage bot that decides if a user query is related to SQL or patient regimen data (e.g., drugs, regimens, lines of therapy). Respond only with 'Yes' or 'No'."
+            },
+            {
+                "role": "user",
+                "content": query
+            }
+        ]
+    ).choices[0].message.content.strip().lower()
+    return response.startswith("yes")
+
 schema_prompt = """You are a PostgreSQL expert helping to translate natural language questions into PSQL queries.
 You are working with a table named `patient_regimen_data` that contains the following columns and example values:
 
@@ -87,6 +103,13 @@ if user_input:
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
 
+    #Triage 
+    if not is_data_related(user_input):
+        with st.chat_message("assistant"):
+            st.warning("❌ This question appears to be outside the scope of patient regimen data. Please ask a data-related question.")
+        st.session_state.messages.append({"role": "assistant", "content": "Out of scope: non-data-related question."})
+        st.stop()
+        
     if st.session_state.phase == "waiting":
         st.session_state.original_query = user_input
         st.session_state.clarified_query = ""
