@@ -103,12 +103,7 @@ if user_input:
         st.markdown(user_input)
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    #Triage 
-    if not is_data_related(user_input):
-        with st.chat_message("assistant"):
-            st.warning("❌ This question appears to be outside the scope of patient regimen data. Please ask a data-related question.")
-        st.session_state.messages.append({"role": "assistant", "content": "Out of scope: non-data-related question."})
-        st.stop()
+    
         
     if st.session_state.phase == "waiting":
         st.session_state.original_query = user_input
