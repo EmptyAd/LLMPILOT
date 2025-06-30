@@ -1,0 +1,27 @@
+[
+    {
+      "content": "Definition of Switch: A switch is when the drugs in Current_Regimen are replaced by entirely different drugs in Next_Regimen and are not present in it.",
+      "source": "definitions"
+    },
+    {
+      "content": "Definition of Add-On: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Current_Regimen, and the Current_Regimen drugs are still present.",
+      "source": "definitions"
+    },
+    {
+      "content": "Column patient_id (TEXT): Unique identifier for a patient.",
+      "source": "schema"
+    },
+    {
+      "content": "Column Current_Regimen: Refers to the list or combination of drugs the patient is currently receiving.",
+      "source": "schema"
+    },
+    {
+      "content": "Each row in patient_regimen_data represents a unique regimen for a patient, including Current_Regimen, Previous_Regimen, and Next_Regimen drug lists.",
+      "source": "schema"
+    },
+    {
+      "content": "Only SELECT queries are allowed. Do not write INSERT, UPDATE, DELETE, or DROP.",
+      "source": "rules"
+    }
+  ]
+  
