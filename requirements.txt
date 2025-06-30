@@ -1,5 +1,8 @@
 streamlit
+plotly
 openai
+pandas
 supabase
-gspread
-oauth2client
+chromadb
+json
+sentence_transformers
