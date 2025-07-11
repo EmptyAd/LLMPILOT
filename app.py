@@ -138,7 +138,7 @@ supabase = init_connection()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-qdrant = QdrantClient(host="localhost", port=6333)
+qdrant = QdrantClient(host="localhost", port=6333) #change the port if you use something else
 top_k = 5  
 max_tokens = 4000  
 
