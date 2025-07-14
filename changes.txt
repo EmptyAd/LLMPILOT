@@ -1,12 +1,12 @@
 def classify_question(text):
     """Classify questions into SQL, RAG, or out-of-scope categories."""
-    
+    #Above this got removed
     try:
         response = client.chat.completions.create(
             model="ft:gpt-4.1-nano-2025-04-14:pharmaai:decision3:BtA8Q5qS:ckpt-step-90", #The model used is new
             messages=[
-                {"role": "system", "content": classification_ques_prompt},
-                {"role": "user", "content": "Question: {question}"}
+                {"role": "system", "content": classification_ques_prompt}, #this got replaced 
+                {"role": "user", "content": "Question: {question}"} #this got replaced 
             ],
             temperature=0.1,
             max_tokens=10
