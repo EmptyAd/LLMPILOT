@@ -1,0 +1,100 @@
+def classify_question(text):
+    """Classify questions into SQL, RAG, or out-of-scope categories."""
+    
+    try:
+        response = client.chat.completions.create(
+            model="ft:gpt-4.1-nano-2025-04-14:pharmaai:decision3:BtA8Q5qS:ckpt-step-90", #The model used is new
+            messages=[
+                {"role": "system", "content": classification_ques_prompt},
+                {"role": "user", "content": "Question: {question}"}
+            ],
+            temperature=0.1,
+            max_tokens=10
+        )
+
+    ...REST REMAINS THE SAME...
+
+
+
+
+model_interpretation = "gpt-4.1-2025-04-14"  #CHANGE THE model
+
+
+
+
+ if triage == "sql":
+        # New: end
+
+        if st.session_state.phase == "waiting":
+            # Initial question phase
+            st.session_state.original_query = user_input
+            st.session_state.clarified_query = ""
+            st.session_state.last_sql = ""
+            st.session_state.feedback_given = False
+            st.session_state.additional_feedback = ""
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Let me try to understand your question..."):
+                    interpretation = client.chat.completions.create(
+                        model=model_interpretation,
+                        messages=[
+                            {"role": "system", "content": interpretation_prompt}, #interpretation_prompt replaced the previous prompt
+                            {"role": "user", "content": user_input}
+                        ]
+                    ).choices[0].message.content.strip()
+                
+                st.session_state.last_interpretation = interpretation
+
+    
+
+else:
+                # Handle clarification
+                st.session_state.clarified_query = user_input
+                with st.chat_message("assistant"):
+                    with st.spinner("Let me try to understand your clarification..."):
+                        clarification_prompt = f"""The original question was:
+{st.session_state.original_query}
+The AI understood the original question as:
+{st.session_state.last_interpretation}
+The user clarified it as:
+{user_input}
+Please summarize what the user actually wants now."""
+                        
+                        interpretation = client.chat.completions.create(
+                            model=model_interpretation,
+                            messages=[
+                                {"role": "system", "content": interpretation_prompt}, #interpretation_prompt replaced the previous prompt
+                                {"role": "user", "content": clarification_prompt}
+                            ]
+                        ).choices[0].message.content.strip()
+
+                    st.session_state.last_interpretation = interpretation
+                    msg = f"Got it. I understood your clarification as:\n\n**{interpretation}**\n\nShall I proceed with SQL generation, or would you like to refine your query?"
+                    st.markdown(msg)
+
+
+
+if decision == "yes":
+                with st.chat_message("assistant"):
+                    st.markdown("Great! Ask your next question anytime.")
+                st.session_state.phase = "waiting"
+            else:
+                # Handle feedback or clarification
+                st.session_state.clarified_query = user_input
+                with st.chat_message("assistant"):
+                    with st.spinner("Let me try to understand your clarification..."):
+                        clarification_prompt = f"""The original question was:
+{st.session_state.original_query}
+The AI understood the original question as:
+{st.session_state.last_interpretation}
+The user provided feedback:
+{user_input}
+Please summarize what the user actually wants now."""
+                        
+                        interpretation = client.chat.completions.create(
+                            model=model_interpretation,
+                            messages=[
+                                {"role": "system", "content": interpretation_prompt},   #interpretation_prompt replaced the previous prompt
+                                {"role": "user", "content": clarification_prompt}
+                            ]
+                        ).choices[0].message.content.strip()
