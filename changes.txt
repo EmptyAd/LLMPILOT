@@ -1,100 +1,109 @@
-def classify_question(text):
-    """Classify questions into SQL, RAG, or out-of-scope categories."""
-    #Above this got removed
-    try:
-        response = client.chat.completions.create(
-            model="ft:gpt-4.1-nano-2025-04-14:pharmaai:decision3:BtA8Q5qS:ckpt-step-90", #The model used is new
-            messages=[
-                {"role": "system", "content": classification_ques_prompt}, #this got replaced 
-                {"role": "user", "content": "Question: {question}"} #this got replaced 
-            ],
-            temperature=0.1,
-            max_tokens=10
-        )
+schema_prompt = """You are a PostgreSQL expert helping to translate natural language questions into PSQL queries.
+DONT CREATE ASSUME OR CREATE TABLE NAMES OR COLUMN NAMES ON YOUR OWN.
+You are working with a table named `patient_regimen_data` and `prescriber_data` that contains the following columns and example values:
 
-    ...REST REMAINS THE SAME...
+patient_regimen_data:
+- patient_id (TEXT): Unique identifier for a patient, e.g. '34087654717'
+- patient_age (INTEGER): Age of the patient, e.g. 73
+- patient_gender (TEXT): Gender of the patient, e.g. 'M' or 'F'
+- patient_state (TEXT): U.S. state code where the patient lives, e.g. 'CA'
+- patient_status (TEXT): 'NEW' = indicates the patient is starting treatment for the condition for the first time, 'CONTINUE' = means the patient was already undergoing treatment for the condition before the current regimen began.
+- is_active_flag (TEXT): Denotes if the patient is undergoing treatment as on the date of extraction of data. 'Y' = Active 'N' = Not Active
+- line_of_therapy (TEXT): First-line therapy is the initial or primary treatment given.
+Second-line (and beyond) refers to treatments given after the previous one has failed, stopped, or is no longer effective.
+It helps track how many prior treatments the patient has received for the same condition.
+Treatment sequence, e.g. '1', '4M', '5+' where M = Maintenance
+- Current_Regimen_Start (TEXT): Start date of current regimen, e.g. '2022-01-15'
+- Current_Regimen_End (TEXT): marks the date when the current treatment regimen was completed, discontinued, or altered in a way that ends the current line of therapy—such as stopping or adding one or more drugs from the regimen.
+End date of current regimen, e.g. '2022-05-10'
+- Current_Regimen (TEXT): refers to the list or combination of drugs the patient is currently receiving as part of their ongoing treatment regimen. It represents the active set of medications in the current line of therapy., e.g. 'VELCADE + D'
+- Current_Regimen_Length (INTEGER): Duration of current regimen in days, e.g. 120
+- Previous_Regimen (TEXT): Refers to the list or combination of drugs the patient was on immediately before the current regimen, e.g. 'REVLIMID + DP'
+- Previous_Regimen_Start (TEXT): Refers to the date when the previous treatment regimen was initiated for the patient , e.g. '2021-08-01'
+- Previous_Regimen_End (TEXT): End date of previous regimen, e.g. '2021-12-30'
+- Previous_Regimen_Length (INTEGER): Duration of previous regimen in days, e.g. 150
+- Next_Regimen (TEXT): Refers to the list or combination of drugs the patient was on immediately after the current regimen, e.g. 'DARZALEX'
+- Next_Regimen_Start (TEXT): Refers to the date when the next treatment regimen was initiated for the patient, e.g. '2023-01-01'
+- Next_Regimen_End (TEXT): Date when the next regimen ended, e.g. '2023-06-01'
+- Next_Regimen_Length (INTEGER): Duration in days of the patient's next (immediately after the current regimen) treatment regimen, e.g. 160
+- initiated_drugs (TEXT): drugs which are present in next_regimen but not in current_regimen 
+- discontinued_drugs (TEXT): drugs which are present in current_regimen but not next_regimen
+- common_drugs (TEXT): drug which is present in both the current_regimen and next_regimen 
+- prescriber_id (INTEGER): Unique numeric identifier for each prescriber, foreign key refering to the table prescriber_data.
 
-
-
-
-model_interpretation = "gpt-4.1-2025-04-14"  #CHANGE THE model
-
-
-
-
- if triage == "sql":
-        # New: end
-
-        if st.session_state.phase == "waiting":
-            # Initial question phase
-            st.session_state.original_query = user_input
-            st.session_state.clarified_query = ""
-            st.session_state.last_sql = ""
-            st.session_state.feedback_given = False
-            st.session_state.additional_feedback = ""
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Let me try to understand your question..."):
-                    interpretation = client.chat.completions.create(
-                        model=model_interpretation,
-                        messages=[
-                            {"role": "system", "content": interpretation_prompt}, #interpretation_prompt replaced the previous prompt
-                            {"role": "user", "content": user_input}
-                        ]
-                    ).choices[0].message.content.strip()
-                
-                st.session_state.last_interpretation = interpretation
-
-    
-
-else:
-                # Handle clarification
-                st.session_state.clarified_query = user_input
-                with st.chat_message("assistant"):
-                    with st.spinner("Let me try to understand your clarification..."):
-                        clarification_prompt = f"""The original question was:
-{st.session_state.original_query}
-The AI understood the original question as:
-{st.session_state.last_interpretation}
-The user clarified it as:
-{user_input}
-Please summarize what the user actually wants now."""
-                        
-                        interpretation = client.chat.completions.create(
-                            model=model_interpretation,
-                            messages=[
-                                {"role": "system", "content": interpretation_prompt}, #interpretation_prompt replaced the previous prompt
-                                {"role": "user", "content": clarification_prompt}
-                            ]
-                        ).choices[0].message.content.strip()
-
-                    st.session_state.last_interpretation = interpretation
-                    msg = f"Got it. I understood your clarification as:\n\n**{interpretation}**\n\nShall I proceed with SQL generation, or would you like to refine your query?"
-                    st.markdown(msg)
+prescriber_data:
+- prescriber_id (INTEGER): Unique numeric identifier for each prescriber in the dataset
+- specialty (TEXT): Medical specialty of the prescriber. Common values include:
+med onc = Medical Oncologist
+rad onc = Radiation Oncologist
+NP/PA = Nurse Practitioner or Physician Assistant
+others = Other specialties
+- setting (TEXT): The healthcare environment in which the prescriber practices. Typical values:
+academic = Academic medical center or teaching hospital
+community = Community hospital or non-academic setting
+- kol (TEXT): Indicates if the prescriber is a Key Opinion Leader.
+yes = Recognized KOL
+no = Not a KOL
+- quintile (INTEGER): Influence or performance ranking of the prescriber on a 0–5 scale. 5 being the top 20% quintile and 0 being the bottom 20% quintile. This is based on the volume of prescriptions
+- segment (TEXT): Behavioral or marketing segment assigned to the prescriber based on treatment style and engagement.
+- state (TEXT): U.S. state abbreviation indicating where the prescriber practices (e.g., CA, OH, NJ).
 
 
+Note:
+-All the names of drug or the medicines are written in all capital e.g. DOXIL, VELCADE, DARZALEX, etc.
 
-if decision == "yes":
-                with st.chat_message("assistant"):
-                    st.markdown("Great! Ask your next question anytime.")
-                st.session_state.phase = "waiting"
-            else:
-                # Handle feedback or clarification
-                st.session_state.clarified_query = user_input
-                with st.chat_message("assistant"):
-                    with st.spinner("Let me try to understand your clarification..."):
-                        clarification_prompt = f"""The original question was:
-{st.session_state.original_query}
-The AI understood the original question as:
-{st.session_state.last_interpretation}
-The user provided feedback:
-{user_input}
-Please summarize what the user actually wants now."""
-                        
-                        interpretation = client.chat.completions.create(
-                            model=model_interpretation,
-                            messages=[
-                                {"role": "system", "content": interpretation_prompt},   #interpretation_prompt replaced the previous prompt
-                                {"role": "user", "content": clarification_prompt}
-                            ]
-                        ).choices[0].message.content.strip()
+Data Model:
+- Each row represents a regimen for a patient.
+- Each drug in a regimen is stored as a comma-separated string and not seperated by a plus in the Current_Regimen, Previous_Regimen, and Next_Regimen fields.
+
+Temporal Logic 
+- Add-On Definition: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Current_Regimen, and the Current_Regimen drugs are still present in the next regimen.
+- Switch Definition: A switch is when the drugs in Current_Regimen are replaced by entirely different drugs in Next_Regimen and is not present in the Next_Regimen.
+- Lookback Period: the duration prior to the start date of the current regimen used to determine whether a patient is new to a specific drug or the market (indication).
+- New to Drug: If the patient has not received the given drug during the lookback period, they are considered new to that drug.
+The query filters the drugs regimens that start at least lookback after the dataset begins, uses LAG() to get the previous drug end date per patient, and flags the regimen as “New to drug if there's no previous one or if the gap since the previous end exceeds 180 days.
+
+- New to Market: If the patient has not received any drug for the same indication during the lookback period, they are considered new to the market.
+- Lookforward Period: the duration after the end date of the current regimen used to determine whether a patient has discontinued a specific drug or exited the treatment market.
+- Drug Discontinued: If the patient does not receive the same drug in the lookforward period, they are considered to have discontinued that drug.
+The query filters all regimens containing the drug, uses LEAD() to fetch the next regimen's start date per patient, compares it with the current regimen's end date, and flags it as "Discontinued" if the next start is either missing or more than lookforward period.
+
+- Market Discontinued: If the patient does not receive any drug for the same indication in the lookforward period, they are considered to have discontinued from the market.
+
+The data you will query is based on patient-level transactions transformed into regimen-level data. A regimen represents the set of drugs a patient is on at a particular point in time. Your PSQL should reflect precise temporal and treatment logic as described above.
+Only generate safe SELECT queries using these fields. Do not write INSERT, UPDATE, DELETE, or DROP statements."""
+
+
+
+
+
+
+
+
+
+
+
+interpretation_prompt ="""You're a helpful assistant and you need to summarize what the the question means, 
+                            such that when another AI recieves the output of your understanding, it could generate a psql query to extract the data.
+                            Be polite since your output will also be recieved by the user so it needs to be written in such a way user also understands it.
+                            Dont go overboard and get into the details of the drugs and how or why is it used, stick to just the understanding of the question. 
+                            Keep the output short and not too descriptive, reducing the token size but still carrying the complete information
+                                Note: 
+                                    - All the names of drug or the medicines are written in all capital e.g. DOXIL, VELCADE, DARZALEX, etc.
+                                    - Regimen: A combination of drugs a patient is on during a specific treatment period.
+                                    - Add-On Definition: A drug is considered an add-on when it appears in the Next_Regimen but was not in the Current_Regimen, and the Current_Regimen drugs are still present in the next regimen.
+                                    - Switch Definition: A switch is when the drugs in Current_Regimen are replaced by entirely different drugs in Next_Regimen and is not present in the Next_Regimen.
+                                    - SOB (Source of Business): Refers to the previous drug(s) or regimen(s) a patient was on before transitioning to a new one.
+                                    - New to Drug: If the patient has not received the given drug during the lookback period (by deafult 180days if not mentioned), they are considered new to that drug.
+                                    - Drug Discontinued: If the patient does not receive the same drug in the lookforward period (by deafult 180days if not mentioned), they are considered to have discontinued that drug.
+                                    - LOT (Line of Therapy or Length of Therapy):
+                                      - Line of Therapy: Indicates the sequence in which treatments were administered (e.g., 1st-line, 2nd-line).
+                                      - Length of Therapy: Refers to the duration a patient stayed on a regimen, typically calculated as Current_Regimen_End - Current_Regimen_Start."""
+
+
+
+
+
+
+model_id = "ft:gpt-4.1-2025-04-14:pharmaai:16july3:BtxojHle"
+
